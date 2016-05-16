@@ -1,0 +1,593 @@
+
+var wanmei = wanmei || {};
+
+// 幻灯效果
+wanmei.Slide = function (container, options) {
+    //初始配置
+    this.opt = $.extend({
+        event: 'click', //切换触发事件
+        mouseOverDelay: 0, //event为mouseover时，切换发生的延迟时间
+        auto: true, //是否开启自动切换
+        delay: 2000, //自动切换间隔
+        duration: 500, //动画持续时间
+        showLabel: '#indexFlashBtn', //若为自定义分页标签，则传入选择器
+        onchange: function (page) {
+        }, //每次切换完成后的回调函数
+        onchangestart: function (page) {
+        },
+        oninitend: function (container) {
+        }
+    }, options);
+    //相关元素
+    this.container = $(container);
+    this.items = this.container.find('.main>li');
+    this.index = 0;
+    this.pager = null;
+    this.timer = null;
+    this.animating = false;
+    //初始化
+    this._init();
+};
+wanmei.Slide.prototype = {
+    _init: function () {
+        var _this = this;
+        //生成标签并绑定事件
+        //涉及下面这么这段的都是#indexFlashPic里banner的按钮动态插入DOM
+        this.opt.showLabel && this._createLabel();
+        this.to(0);
+        //自动切换
+        if (this.opt.auto) {
+            this.autoStart();
+            this.container.hover(function () {
+                _this.autoPause();
+            }, function () {
+                _this.autoStart();
+            });
+        }
+        this.opt.oninitend.call(this, this.container);
+    },
+    _createLabel: function () {
+        var _this = this,   //当前对象 套路
+            dom = [],
+            timer, i;
+        dom.push('<div class="banner-pager"><ul class="pager">');
+        for (i = 1; i <= this.items.size(); i++) {
+            dom.push('<li></li>');
+        }
+        dom.push('</ul><i class="pager-radius"></i></div>');
+        this.pager = typeof this.opt.showLabel == 'string' ? this.container.find(this.opt.showLabel) : $(dom.join('')).appendTo(this.container);
+        //绑定标签事件
+        if (this.opt.mouseOverDelay) {
+            this.pager.find('li').hover(function () {
+                var index = $(this).index();
+                timer = setTimeout(function () {
+                    _this.to(index);
+                }, _this.opt.mouseOverDelay);
+            }, function () {
+                clearTimeout(timer);
+            });
+        }
+        else {
+            this.pager.find('li').bind(this.opt.event, function () {
+                _this.to($(this).index());
+            });
+        }
+    },
+    autoStart: function () {
+        var _this = this;
+        this.timer = setInterval(function () {
+            _this.next();
+        }, this.opt.delay);
+    },
+    autoPause: function () {
+        clearInterval(this.timer);
+    },
+    prev: function () {
+        this.to(this.index == 0 ? this.items.size() - 1 : this.index - 1);
+    },
+    next: function () {
+        this.to(this.index == this.items.size() - 1 ? 0 : this.index + 1);
+    },
+    //hover到对应的handler上的定位切换
+    to: function (index) {
+        var _this = this;
+        if (this.animating) return false;
+        //每次切换完的回调函数的this指向
+        this.opt.onchangestart.call(this, index);
+        this.animating = true;
+        this.items.stop().eq(index).fadeIn(this.opt.duration, function () {
+            _this.animating = false;
+        }).siblings().fadeOut(this.opt.duration);
+        this.pager && this.pager.find('li').eq(index).addClass('current').siblings().removeClass('current');
+        //首屏连版懒加载换src
+        this.items.eq(index).find('img[src3]').each(function () {
+            var obj = $(this);
+            obj.attr('src', obj.attr('src3')).removeAttr('src3');
+        });
+        this.index = index;
+        this.opt.onchange.call(this, index);
+    }
+};
+//banner
+wanmei.banner = function () {
+    var slide = new wanmei.Slide('.banner', {
+            mouseOverDelay: 200,
+            duration: 500,
+            delay: 4000
+        }),
+        box = $('.banner'),
+        prev = box.find('.banner-prev'),
+        next = box.find('.banner-next');
+
+    box.hover(function () {
+        prev.stop(true, true).fadeIn(200);
+        next.stop(true, true).fadeIn(200);
+    }, function () {
+        prev.stop(true, true).fadeOut(200);
+        next.stop(true, true).fadeOut(200);
+    });
+
+    prev.click(function () {
+        slide.prev();
+    });
+    next.click(function () {
+        slide.next();
+    });
+};
+
+// 循环滚动
+wanmei.listloop = function (opt) {
+    /**
+     * @param  {[type]} wrap [最外层DOM元素id或class]
+     * @param  {[type]} loopBox [循环滚动的DOM元素]
+     * @param  {[type]} triggerLeft [控制左移的按钮]
+     * @param  {[type]} triggerRight [控制右移的按钮]
+     * @param  {[Object]} step [滚动的元素数量]
+     * @param  {[Object]} scrollWidth [滚动的宽度]
+     * @param  {[type]} isLazyLoad [是否需要图片懒加载]
+     * @param  {[type]} hasCount [是否有图片计数]
+     * @param  {[type]} isLoop [是否循环]
+     * @return {[type]} [description]
+     */
+    var _opt = {
+        wrap: '',
+        loopBox: '',
+        triggerLeft: '.banner-prev',
+        triggerRight: '.banner-next',
+        curCount: '.cur-count',
+        totalCount: '.total-count',
+        step: {
+            wide: 4,
+            narrow: 4
+        },
+        scrollWidth: {
+            wide: 580,
+            narrow: 580
+        },
+        hasCount: true,
+        isLoop: true,
+        isLazyLoad: true,
+        delay: 0,
+        hasLabel: false,
+        labelObj: null,
+        isRandom: false
+    };
+    $.extend(_opt, opt);
+    var box = $(_opt.wrap),
+        leftCtrl = box.find(_opt.triggerLeft),
+        rightCtrl = box.find(_opt.triggerRight),
+        moveBox = box.find(_opt.loopBox),
+        moveBoxLi = moveBox.find("li:not(.hide)"),
+        step = _opt.step.wide,
+        scrollWidth = _opt.scrollWidth.wide,
+        len = Math.ceil(moveBoxLi.length / step),
+        liLen = moveBoxLi.length,
+        curCount = box.find(_opt.curCount),
+        totalCount = box.find(_opt.totalCount),
+        i = 0;
+    if (screen.width < 1280) {
+        step = _opt.step.narrow;
+        scrollWidth = _opt.scrollWidth.narrow;
+        var _step = moveBoxLi.length % step;
+        len = Math.ceil(moveBoxLi.length / step);
+        liLen = moveBoxLi.length - _step;
+    }
+    _opt.hasCount && totalCount.html(len);
+    leftCtrl.unbind().click(function () {
+        prev();
+    });
+    rightCtrl.unbind().click(function () {
+        next();
+    });
+
+    var pager = opt.labelObj, pagerDom = '', pageri;
+    if (pager) {
+        if (len <= 1) {
+            pager.hide();
+        }
+
+        pager.find('.prev').unbind().click(function () {
+            prev();
+        });
+        pager.find('.next').unbind().click(function () {
+            next();
+        });
+
+        for (pageri = 0; pageri < len; pageri++) {
+            pagerDom += '<li></li>';
+        }
+        pager.find('ul').html(pagerDom).find('li').click(function () {
+            i = $(this).index();
+            move(false, i);
+        }).first().addClass('current');
+    }
+
+    function next() {
+        if (len == 1 || moveBox.is(":animated")) {
+            return false;
+        }
+        if (!_opt.isLoop) {
+            i++;
+            if (i >= len) {
+                i = len - 1
+            }
+            move(false, i);
+            return;
+        }
+        if (i == len - 1) {
+            for (var j = 0; j < step; j++) {
+                moveBoxLi.eq(j).css({"position": "relative", "left": len * scrollWidth + "px"});
+            }
+        }
+        i++;
+        move(function () {
+            if (i == len) {
+                i = 0;
+                moveBoxLi.removeAttr("style");
+                moveBox.css("left", i * scrollWidth);
+            }
+        }, i);
+    }
+
+    function prev() {
+        if (len == 1 || moveBox.is(":animated")) {
+            return false;
+        }
+        if (!_opt.isLoop) {
+            i--;
+            if (i <= 0) {
+                i = 0;
+            }
+            move(false, i);
+            return;
+        }
+        if (i == 0) {
+            for (var j = 1; j <= step; j++) {
+                moveBoxLi.eq(liLen - j).css({"position": "relative", "left": -len * scrollWidth + "px"});
+            }
+        }
+        i--;
+        move(function () {
+            if (i == -1) {
+                i = len - 1;
+                moveBoxLi.removeAttr("style");
+                moveBox.css("left", -i * scrollWidth);
+            }
+        }, i);
+    }
+
+    function move(callback, _index) {
+        lazyImg();
+        if (_opt.hasCount) {
+            if (_index > len - 1) {
+                _index = 0
+            }
+            if (_index < 0) {
+                _index = len - 1
+            }
+            curCount.html(_index + 1);
+        }
+        if (!callback) {
+            callback = function () {
+            }
+        }
+        moveBox.stop(true).animate({left: -i * scrollWidth}, 300, callback);
+        // 同步分页标签
+        chooseLabel(i == len ? 0 : i);
+        if (pager) {
+            pager.find('li').removeClass('current').eq(i == len ? 0 : i).addClass('current');
+        }
+    }
+
+    function lazyImg() {
+        if (!_opt.isLazyLoad) {
+            return;
+        }
+        for (var j = 0; j < step; j++) {
+            var _thisImg = moveBoxLi.eq(i * step + j).find('img[src3]');
+            _thisImg.each(function () {
+                var _this = $(this);
+                _this.attr('src', _this.attr('src3')).removeAttr('src3').addClass('err-product');
+            });
+        }
+    }
+
+    // 项目扩展
+    // 创建分页标签
+    function createLabel() {
+        var dom = [], j, timer;
+        dom.push('<div class="banner-pager"><ul class="pager">');
+        for (j = 1; j <= len; j++) {
+            dom.push('<li' + (j == 1 ? ' class="current"' : '') + '>' + j + '</li>');
+        }
+        dom.push('</ul><i class="pager-radius"></i></div>');
+        var pager = $(dom.join('')).appendTo(box);
+
+        // 分页部分行为
+        pager.find('li').hover(function () {
+            var index = $(this).index(),
+                begin = index * step,
+                over = (index + 1) * step;
+            timer = setTimeout(function () {
+                for (var n = begin; n < over; n++) {
+                    moveBox.find('li').eq(n).find('img[src3]').each(function () {
+                        var _this = $(this);
+                        _this.attr('src', _this.attr('src3')).removeAttr('src3').addClass('err-product');
+                    });
+                }
+                moveBox.stop(true).animate({left: -index * scrollWidth}, 300);
+                chooseLabel(index);
+                if (_opt.hasCount) {
+                    curCount.html(index + 1);
+                }
+                i = index;
+            }, 100);
+        }, function () {
+            clearTimeout(timer);
+        });
+    }
+
+    function chooseLabel(i) {
+        box.find('.pager li').removeClass('current').eq(i).addClass('current');
+    }
+
+    if (_opt.hasLabel && len > 1) {
+        createLabel();
+    }
+
+    if (_opt.delay) {
+        var auto = setInterval(function () {
+            next();
+        }, _opt.delay);
+
+        box.hover(function () {
+            clearInterval(auto);
+        }, function () {
+            auto = setInterval(function () {
+                next();
+            }, _opt.delay);
+        });
+    }
+
+    if (_opt.isRandom) {
+        var random = Math.floor(Math.random() * len),
+            begin = random * step,
+            over = (random + 1) * step;
+        for (var n = begin; n < over; n++) {
+            moveBox.find('li').eq(n).find('img[src3]').each(function () {
+                var _this = $(this);
+                _this.attr('src2', _this.attr('src3')).removeAttr('src3').addClass('err-product');
+            });
+        }
+        chooseLabel(random);
+        moveBox.stop(true).animate({left: -random * scrollWidth}, 300);
+        i = random;
+    }
+};
+
+//listloop按钮
+wanmei.listloopBtn = function (obj) {
+        var _obj = {
+            box: '.J-qiang',
+            prev: '.banner-prev',
+            next: '.banner-next'
+        };
+        //$.extend(dest,src1,src2,src3...);将src1,src2,src3合并到dest中 合并多个对象
+        $.extend(_obj, obj);
+
+        var wrap = $(_obj.box),
+            left = wrap.find(_obj.prev),
+            right = wrap.find(_obj.next);
+
+        wrap.hover(function () {
+            left.stop(true, true).fadeIn(200);
+            right.stop(true, true).fadeIn(200);
+        }, function () {
+            left.stop(true, true).fadeOut(200);
+            right.stop(true, true).fadeOut(200);
+        });
+};
+
+//倒计时
+wanmei.timeLeft = function (o) {
+    var obj = o,
+        time = parseInt(obj.attr('data-time')),
+        timer,
+        flag = (obj.find('.milli').length > 0) && (time - (new Date()).getTime() > 0),
+        timer2;
+
+    function countDown(time) {
+        var now = (new Date()).getTime(),
+            endDate = time,
+            leftTime = endDate - now,
+            leftSecond = parseInt(leftTime / 1000),
+            days = Math.floor((leftSecond / ( 24 * 60 * 60))),
+            hour = Math.floor(((leftSecond - days * 24 * 60 * 60) / ( 60 * 60))),
+            minute = Math.floor((leftSecond - days * 24 * 60 * 60 - hour * 3600) / 60),
+            second = Math.floor(leftSecond - days * 24 * 60 * 60 - hour * 3600 - minute * 60);
+        if (leftTime < 0) {
+            clearInterval(timer);
+            if (flag) {
+                clearInterval(timer2);
+            }
+            obj.find('.days').text('00').end()
+               .find('.hours').text('00').end()
+               .find('.minutes').text('00').end()
+               .find('.secs').text('00')
+               .find('.milli').text('0');
+        } else {
+            obj.find('.days').text(days < 10 ? ('0' + days) : days).end()
+               .find('.hours').text(hour < 10 ? ('0' + hour) : hour).end()
+               .find('.minutes').text(minute < 10 ? ('0' + minute) : minute).end()
+               .find('.secs').text(second < 10 ? ('0' + second) : second);
+        }
+    }
+
+    timer = setInterval(function () {
+        countDown(time);//结束时间的时间戳
+    }, 1000);
+
+    if (flag) {
+        setTimeout(function () {
+            var objMilli = obj.find('.milli');
+            objMilli.data('begin', '9');
+            timer2 = setInterval(function () {
+                var num = parseInt(objMilli.data('begin'));
+                obj.find('.milli').text(num);
+                objMilli.data('begin', num - 1 < 0 ? 9 : num - 1);
+            }, 100)
+        }, 1000);
+
+    }
+};
+
+//倒计时显示
+wanmei.timeLeftShow = function () {
+    var box = $('.J-time');
+    box.each(function (i) {
+        wanmei.timeLeft(box.eq(i));
+    });
+};
+
+//tab固定
+wanmei.tabFixed = function() {
+    var $box = $('.js-scrollTab');
+    $box.data('top', $box.offset().top);
+    $box.data('left', $box.offset().left);
+    function fixed() {
+        var docScrollTop = $(document).scrollTop();
+        if (docScrollTop >= $box.data('top')) {
+            $box.addClass('floor-fixed');
+        } else {
+            $box.removeClass('floor-fixed');
+        }
+    }
+
+    fixed();
+    $(window).resize(function () {
+        fixed();
+    }).scroll(function () {
+        fixed();
+    });
+};
+
+wanmei.navSlidebar = function() {
+    $(document).on('click', function(e) {
+        if($(e.target).closest('.catelog-name, .catelog-sidebar').length == 0 ){
+            $('.part_05_cont').hide();
+        }
+    });
+
+    $('.catelog-name').on('click', function() {
+        $('.part_05_cont').toggle();
+    });
+
+    $('.catelog-sidebar').on('click', 'li', function() {
+        var index =  $(this).index();
+        $(this).addClass('selected').siblings().removeClass('selected');
+        $(this).parent().siblings('.cont-panel-wrap').show().children().eq(index).show().siblings().hide();
+    });
+
+    $('.cont-panel-wrap .close').on('click', function() {
+        $('.part_05_cont').hide();
+    });
+
+    //树形点击切换
+    $('.tree-item').on('click', function () {
+        //判断是否有子集
+        if($(this).siblings("ul").length){
+            //父级添加选中类 判断是否打开
+            //有子集，为关闭状态，此时需打开
+            if($(this).siblings("ul").is(":hidden")){
+                //同级去除选择
+                $(this).addClass("s-selected").parent().siblings().find(".s-selected").removeClass("s-selected");
+                $(this)/*.addClass("menu-open")*/.siblings("ul").show().parent().siblings("li").find(".tree-item")/*.removeClass("menu-open")*/.siblings("ul").hide();
+            }else{
+                //有子集，为打开状态,此时需关闭
+                //同级去除选择
+                $(this).addClass("s-selected").parent().siblings().find(".s-selected").removeClass("s-selected");
+                //$(this).removeClass("menu-open");
+                $(this).siblings("ul").hide().find(".tree-item").removeClass("menu-open s-selected").siblings("ul").hide();
+            }
+        }else{
+            //无子集，同级去除选择
+            $(this).addClass("s-selected").parent().siblings().find(".s-selected").removeClass("s-selected");
+            //关闭同级的 别的子集
+            $(this).parent().siblings().find(".menu-open").removeClass("menu-open").siblings("ul").hide();
+        }
+    });
+};
+
+wanmei.inputEvent = function() {
+    $('#checkbox1').change(function() {
+        //if(!$(this).is(':checked'))
+        if($(this).is(':checked')) {
+            console.log('checkbox-checked');
+        }else {
+            console.log('checkbox-nochecked');
+        }
+    });
+
+    $('.input-radio').click(function() {
+        var _val = $(this).val();
+        if (_val === 'rdVal1') {
+            console.log('rdVal1');
+        }else if (_val === 'rdVal2') {
+            console.log('rdVal2');
+        }
+    });
+};
+
+$(function() {
+	wanmei.banner();
+    wanmei.listloopBtn({
+        box: '.J-qiang',
+        prev: '.banner-prev',
+        next: '.banner-next'
+    });
+    wanmei.listloopBtn({
+        box: '.J-qiang2',
+        prev: '.banner-prev',
+        next: '.banner-next'
+    });
+    wanmei.listloop({
+        wrap: '.J-qiang',
+        loopBox: '.pic-list',
+        step: { wide: 1, narrow: 1},
+        scrollWidth: { wide: 250, narrow: 250},
+        hasLabel: true,
+        delay: 2000
+    });
+    wanmei.listloop({
+        wrap: '.J-qiang2',
+        loopBox: '.pic-list',
+        step: { wide: 1, narrow: 1},
+        scrollWidth: { wide: 160, narrow: 160},
+        hasLabel: true,
+        delay: 2000
+    });
+    wanmei.timeLeftShow();
+    wanmei.tabFixed();
+    wanmei.navSlidebar();
+    wanmei.inputEvent();
+})
