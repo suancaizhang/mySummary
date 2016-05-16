@@ -17,7 +17,6 @@ function waterfall(parent, box) {
       oBoxHarr[i] = oBoxH;
     } else {
       var minH = Math.min.apply(null, oBoxHarr);
-      console.log(minH);
       var minIndex = getminIndex(oBoxHarr, minH);
       oBox[i].style.position = "absolute";
       oBox[i].style.top = minH + "px";
