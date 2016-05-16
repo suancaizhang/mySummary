@@ -6,3 +6,5 @@
 移动端处理屏幕自适应基础样式 用less预处理器
 # waterFall
 图片瀑布流
+# componentExtend
+更具扩展性的类组件
