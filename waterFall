@@ -1,0 +1,49 @@
+window.onload = function() {
+  waterfall('water-fall', 'pin');
+}
+
+function waterfall(parent, box) {
+  var oParent = document.getElementById(parent);
+  var oBox = getByClass(oParent, box);
+  var oBoxw = oBox[0].offsetWidth;
+  var cols = Math.floor(document.documentElement.clientWidth / oBoxw);
+  oParent.style.cssText = "width:" + oBoxw*cols + "px;margin: 0 auto;";
+
+  //判断最小高度图片 在其后边定位图片
+  var oBoxHarr = [];
+  for(var i = 0;i < oBox.length;i++) {
+    var oBoxH = oBox[i].offsetHeight;
+    if (i < cols) {
+      oBoxHarr[i] = oBoxH;
+    } else {
+      var minH = Math.min.apply(null, oBoxHarr);
+      console.log(minH);
+      var minIndex = getminIndex(oBoxHarr, minH);
+      oBox[i].style.position = "absolute";
+      oBox[i].style.top = minH + "px";
+      oBox[i].style.left = oBox[minIndex].offsetLeft + "px";
+      oBoxHarr[minIndex] += oBox[i].offsetHeight;  //更新高度
+    };
+  }
+}
+
+//遍历每个图片的外层div 将子元素放入数组
+function getByClass(parent, clsname) {
+  var boxArr = [],
+      oEles = parent.getElementsByTagName('*');
+  for(var i = 0;i < oEles.length;i++) {
+    if (oEles[i].className == clsname) {
+      boxArr.push(oEles[i]);
+    }
+  }
+  return boxArr;
+}
+
+//获取每一个子元素图片的索引
+function getminIndex(arr, minH) {
+  for(var i in arr) {
+    if (arr[i] == minH) {
+      return i;
+    };
+  }
+}
